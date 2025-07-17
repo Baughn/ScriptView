@@ -21,6 +21,7 @@ struct SubtitleViewer {
     display_count: usize,
     always_on_top: bool,
     file_exists: bool,
+    script_installed: bool,
 }
 
 impl SubtitleViewer {
@@ -46,6 +47,7 @@ impl SubtitleViewer {
             display_count: 10,
             always_on_top: true,
             file_exists: false,
+            script_installed: false,
         };
         
         // Load initial content
@@ -56,12 +58,19 @@ impl SubtitleViewer {
     
     fn load_subtitles(&mut self) {
         self.file_exists = std::path::Path::new(&self.subtitle_file).exists();
+        self.script_installed = self.check_script_installed();
         if let Ok(content) = std::fs::read_to_string(&self.subtitle_file) {
             if let Ok(subs) = serde_json::from_str::<Vec<SubtitleEntry>>(&content) {
                 let mut subtitles = self.subtitles.lock().unwrap();
                 *subtitles = subs;
             }
         }
+    }
+    
+    fn check_script_installed(&self) -> bool {
+        let home_dir = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let script_path = format!("{}/.config/mpv/scripts/subtitle-monitor.lua", home_dir);
+        std::path::Path::new(&script_path).exists()
     }
     
     fn install_lua_script(&self) -> Result<(), std::io::Error> {
@@ -98,44 +107,55 @@ impl eframe::App for SubtitleViewer {
                 ui.separator();
                 
                 // Get subtitles
-                let subtitles = self.subtitles.lock().unwrap();
-                let display_subs: Vec<_> = subtitles
-                    .iter()
-                    .rev()
-                    .take(self.display_count)
-                    .collect();
+                let display_subs: Vec<_> = {
+                    let subtitles = self.subtitles.lock().unwrap();
+                    subtitles
+                        .iter()
+                        .cloned()
+                        .rev()
+                        .take(self.display_count)
+                        .collect()
+                };
                 
-                // Show warning if subtitle file doesn't exist
-                if !self.file_exists {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(255, 165, 0),
-                        "⚠️ Subtitle file not found!"
-                    );
-                    ui.label("The mpv Lua script is not running or not installed.");
+                // Show script installation status
+                if !self.script_installed {
                     ui.horizontal(|ui| {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(255, 165, 0),
+                            "⚠️ Script not installed:"
+                        );
                         if ui.button("Install Script").clicked() {
                             match self.install_lua_script() {
                                 Ok(_) => {
-                                    ui.label("✓ Script installed to ~/.config/mpv/scripts/");
+                                    self.script_installed = true;
                                 }
-                                Err(e) => {
-                                    ui.colored_label(
-                                        egui::Color32::RED,
-                                        format!("❌ Install failed: {}", e)
-                                    );
-                                }
+                                Err(_) => {}
                             }
                         }
-                        ui.label("or copy subtitle-monitor.lua to ~/.config/mpv/scripts/");
                     });
+                } else {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(0, 200, 0),
+                        "✓ Script installed"
+                    );
+                }
+                
+                // Show file status warning
+                if !self.file_exists {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(255, 165, 0),
+                        "⚠️ No subtitle data (maybe mpv isn't running?)"
+                    );
                     ui.separator();
                 }
                 
                 if display_subs.is_empty() {
                     if self.file_exists {
                         ui.label("No subtitles yet...");
+                    } else if self.script_installed {
+                        ui.label("Start mpv to see subtitles here.");
                     } else {
-                        ui.label("Start mpv with the Lua script to see subtitles here.");
+                        ui.label("Install the script and start mpv to see subtitles.");
                     }
                 } else {
                     egui::ScrollArea::vertical()
