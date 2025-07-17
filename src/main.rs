@@ -23,6 +23,7 @@ struct SubtitleViewer {
     file_exists: bool,
     script_installed: bool,
     script_install_time: Option<Instant>,
+    font_size: f32,
 }
 
 impl SubtitleViewer {
@@ -49,6 +50,7 @@ impl SubtitleViewer {
             file_exists: false,
             script_installed: false,
             script_install_time: None,
+            font_size: 14.0,
         };
         
         // Load initial content
@@ -104,6 +106,19 @@ impl eframe::App for SubtitleViewer {
         
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical(|ui| {
+                // Font size controls at the top
+                ui.horizontal(|ui| {
+                    ui.label("Font size:");
+                    if ui.button("−").clicked() && self.font_size > 8.0 {
+                        self.font_size -= 1.0;
+                    }
+                    ui.label(format!("{:.0}", self.font_size));
+                    if ui.button("+").clicked() && self.font_size < 32.0 {
+                        self.font_size += 1.0;
+                    }
+                });
+                ui.separator();
+                
                 // Show script installation status
                 if !self.script_installed {
                     ui.horizontal(|ui| {
@@ -170,7 +185,7 @@ impl eframe::App for SubtitleViewer {
                                                         .small()
                                                         .color(egui::Color32::from_gray(128)),
                                                 );
-                                                ui.label(egui::RichText::new(&sub.text.replace('\n', " ")).size(14.0));
+                                                ui.label(egui::RichText::new(&sub.text.replace('\n', " ")).size(self.font_size));
                                             });
                                         });
                                     }
