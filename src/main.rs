@@ -106,15 +106,18 @@ impl eframe::App for SubtitleViewer {
                 ui.heading("MPV Subtitle History");
                 ui.separator();
                 
-                // Get subtitles
+                // Get subtitles (keep original order for bottom alignment)
                 let display_subs: Vec<_> = {
                     let subtitles = self.subtitles.lock().unwrap();
-                    subtitles
-                        .iter()
-                        .cloned()
-                        .rev()
-                        .take(self.display_count)
-                        .collect()
+                    let len = subtitles.len();
+                    if len > self.display_count {
+                        subtitles[(len - self.display_count)..]
+                            .iter()
+                            .cloned()
+                            .collect()
+                    } else {
+                        subtitles.iter().cloned().collect()
+                    }
                 };
                 
                 // Show script installation status
@@ -149,19 +152,30 @@ impl eframe::App for SubtitleViewer {
                     ui.separator();
                 }
                 
+                // Subtitle area with bottom alignment
+                let remaining_height = ui.available_height() - 50.0; // Reserve space for controls
+                
                 if display_subs.is_empty() {
-                    if self.file_exists {
-                        ui.label("No subtitles yet...");
-                    } else if self.script_installed {
-                        ui.label("Start mpv to see subtitles here.");
-                    } else {
-                        ui.label("Install the script and start mpv to see subtitles.");
-                    }
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), remaining_height),
+                        egui::Layout::bottom_up(egui::Align::Center),
+                        |ui| {
+                            if self.file_exists {
+                                ui.label("No subtitles yet...");
+                            } else if self.script_installed {
+                                ui.label("Start mpv to see subtitles here.");
+                            } else {
+                                ui.label("Install the script and start mpv to see subtitles.");
+                            }
+                        }
+                    );
                 } else {
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false; 2])
-                        .show(ui, |ui| {
-                            for (i, sub) in display_subs.iter().enumerate() {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), remaining_height),
+                        egui::Layout::bottom_up(egui::Align::LEFT),
+                        |ui| {
+                            // Reverse order since bottom_up layout displays from bottom
+                            for (i, sub) in display_subs.iter().rev().enumerate() {
                                 ui.group(|ui| {
                                     ui.horizontal(|ui| {
                                         // Time stamp
@@ -183,7 +197,8 @@ impl eframe::App for SubtitleViewer {
                                     ui.add_space(2.0);
                                 }
                             }
-                        });
+                        }
+                    );
                 }
                 
                 ui.separator();
