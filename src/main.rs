@@ -106,8 +106,19 @@ impl eframe::App for SubtitleViewer {
         
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical(|ui| {
-                // Font size controls at the top
+                // Controls at the top
                 ui.horizontal(|ui| {
+                    if ui.button(if self.always_on_top { "Always On Top ✓" } else { "Always On Top" }).clicked() {
+                        self.always_on_top = !self.always_on_top;
+                        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                            if self.always_on_top {
+                                egui::WindowLevel::AlwaysOnTop
+                            } else {
+                                egui::WindowLevel::Normal
+                            }
+                        ));
+                    }
+                    ui.separator();
                     ui.label("Font size:");
                     if ui.button("−").clicked() && self.font_size > 8.0 {
                         self.font_size -= 1.0;
@@ -196,20 +207,6 @@ impl eframe::App for SubtitleViewer {
                 }
                 
                 ui.separator();
-                
-                // Controls
-                ui.horizontal(|ui| {
-                    if ui.button(if self.always_on_top { "Always On Top ✓" } else { "Always On Top" }).clicked() {
-                        self.always_on_top = !self.always_on_top;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
-                            if self.always_on_top {
-                                egui::WindowLevel::AlwaysOnTop
-                            } else {
-                                egui::WindowLevel::Normal
-                            }
-                        ));
-                    }
-                });
             });
         });
     }
