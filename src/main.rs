@@ -78,8 +78,24 @@ impl SubtitleViewer {
         self.script_installed = self.check_script_installed();
         if let Ok(content) = std::fs::read_to_string(&self.subtitle_file) {
             if let Ok(subs) = serde_json::from_str::<Vec<SubtitleEntry>>(&content) {
+                // Filter out subtitles that are prefixes of the next subtitle
+                let mut filtered_subs = Vec::new();
+                for i in 0..subs.len() {
+                    let should_include = if i < subs.len() - 1 {
+                        // Check if current subtitle is a prefix of the next one
+                        !subs[i + 1].text.starts_with(&subs[i].text)
+                    } else {
+                        // Always include the last subtitle
+                        true
+                    };
+                    
+                    if should_include {
+                        filtered_subs.push(subs[i].clone());
+                    }
+                }
+                
                 let mut subtitles = self.subtitles.lock().unwrap();
-                *subtitles = subs;
+                *subtitles = filtered_subs;
             }
         }
     }
