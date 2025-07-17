@@ -26,6 +26,20 @@ struct SubtitleViewer {
     font_size: f32,
 }
 
+fn format_timestamp(seconds: f64) -> String {
+    let total_seconds = seconds as u64;
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let secs = total_seconds % 60;
+    let millis = ((seconds - total_seconds as f64) * 10.0) as u64;
+    
+    if hours > 0 {
+        format!("{}:{:02}:{:02}.{}", hours, minutes, secs, millis)
+    } else {
+        format!("{}:{:02}.{}", minutes, secs, millis)
+    }
+}
+
 impl SubtitleViewer {
     fn new() -> Self {
         let (tx, rx) = channel();
@@ -192,7 +206,7 @@ impl eframe::App for SubtitleViewer {
                                             ui.set_width(ui.available_width());
                                             ui.horizontal_wrapped(|ui| {
                                                 ui.label(
-                                                    egui::RichText::new(format!("[{:.1}s]", sub.start_time))
+                                                    egui::RichText::new(format!("[{}]", format_timestamp(sub.start_time)))
                                                         .small()
                                                         .color(egui::Color32::from_gray(128)),
                                                 );
