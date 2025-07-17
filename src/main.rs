@@ -40,6 +40,24 @@ fn format_timestamp(seconds: f64) -> String {
     }
 }
 
+fn filter_prefix_subtitles(subtitles: Vec<SubtitleEntry>) -> Vec<SubtitleEntry> {
+    let mut filtered = Vec::new();
+    for i in 0..subtitles.len() {
+        let should_include = if i < subtitles.len() - 1 {
+            // Check if current subtitle is a prefix of the next one
+            !subtitles[i + 1].text.starts_with(&subtitles[i].text)
+        } else {
+            // Always include the last subtitle
+            true
+        };
+        
+        if should_include {
+            filtered.push(subtitles[i].clone());
+        }
+    }
+    filtered
+}
+
 impl SubtitleViewer {
     fn new() -> Self {
         let (tx, rx) = channel();
@@ -78,22 +96,7 @@ impl SubtitleViewer {
         self.script_installed = self.check_script_installed();
         if let Ok(content) = std::fs::read_to_string(&self.subtitle_file) {
             if let Ok(subs) = serde_json::from_str::<Vec<SubtitleEntry>>(&content) {
-                // Filter out subtitles that are prefixes of the next subtitle
-                let mut filtered_subs = Vec::new();
-                for i in 0..subs.len() {
-                    let should_include = if i < subs.len() - 1 {
-                        // Check if current subtitle is a prefix of the next one
-                        !subs[i + 1].text.starts_with(&subs[i].text)
-                    } else {
-                        // Always include the last subtitle
-                        true
-                    };
-                    
-                    if should_include {
-                        filtered_subs.push(subs[i].clone());
-                    }
-                }
-                
+                let filtered_subs = filter_prefix_subtitles(subs);
                 let mut subtitles = self.subtitles.lock().unwrap();
                 *subtitles = filtered_subs;
             }
@@ -255,4 +258,132 @@ fn main() -> Result<(), eframe::Error> {
         options,
         Box::new(|_cc| Ok(Box::new(SubtitleViewer::new()))),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_subtitle(text: &str, start_time: f64) -> SubtitleEntry {
+        SubtitleEntry {
+            text: text.to_string(),
+            start_time,
+            end_time: None,
+            timestamp: 0,
+        }
+    }
+
+    #[test]
+    fn test_filter_no_prefixes() {
+        let subtitles = vec![
+            create_subtitle("Hello world", 1.0),
+            create_subtitle("Goodbye world", 2.0),
+            create_subtitle("Another subtitle", 3.0),
+        ];
+        
+        let filtered = filter_prefix_subtitles(subtitles.clone());
+        assert_eq!(filtered.len(), 3);
+        assert_eq!(filtered[0].text, "Hello world");
+        assert_eq!(filtered[1].text, "Goodbye world");
+        assert_eq!(filtered[2].text, "Another subtitle");
+    }
+
+    #[test]
+    fn test_filter_single_prefix() {
+        let subtitles = vec![
+            create_subtitle("Hello", 1.0),
+            create_subtitle("Hello world", 2.0),
+            create_subtitle("Goodbye", 3.0),
+        ];
+        
+        let filtered = filter_prefix_subtitles(subtitles);
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].text, "Hello world");
+        assert_eq!(filtered[1].text, "Goodbye");
+    }
+
+    #[test]
+    fn test_filter_multiple_prefixes() {
+        let subtitles = vec![
+            create_subtitle("H", 1.0),
+            create_subtitle("He", 1.5),
+            create_subtitle("Hel", 2.0),
+            create_subtitle("Hell", 2.5),
+            create_subtitle("Hello", 3.0),
+            create_subtitle("Hello world", 3.5),
+            create_subtitle("Next subtitle", 4.0),
+        ];
+        
+        let filtered = filter_prefix_subtitles(subtitles);
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].text, "Hello world");
+        assert_eq!(filtered[1].text, "Next subtitle");
+    }
+
+    #[test]
+    fn test_filter_keeps_last_subtitle() {
+        let subtitles = vec![
+            create_subtitle("Hello", 1.0),
+            create_subtitle("World", 2.0),
+        ];
+        
+        let filtered = filter_prefix_subtitles(subtitles);
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[1].text, "World");
+    }
+
+    #[test]
+    fn test_filter_empty_list() {
+        let subtitles = vec![];
+        let filtered = filter_prefix_subtitles(subtitles);
+        assert_eq!(filtered.len(), 0);
+    }
+
+    #[test]
+    fn test_filter_single_subtitle() {
+        let subtitles = vec![create_subtitle("Only one", 1.0)];
+        let filtered = filter_prefix_subtitles(subtitles);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].text, "Only one");
+    }
+
+    #[test]
+    fn test_filter_progressive_typing() {
+        // Simulates progressive typing/display of a subtitle
+        let subtitles = vec![
+            create_subtitle("I", 1.0),
+            create_subtitle("I a", 1.1),
+            create_subtitle("I am", 1.2),
+            create_subtitle("I am t", 1.3),
+            create_subtitle("I am ty", 1.4),
+            create_subtitle("I am typ", 1.5),
+            create_subtitle("I am typi", 1.6),
+            create_subtitle("I am typin", 1.7),
+            create_subtitle("I am typing", 1.8),
+            create_subtitle("I am typing this", 1.9),
+            create_subtitle("I am typing this message", 2.0),
+            create_subtitle("Next subtitle", 3.0),
+        ];
+        
+        let filtered = filter_prefix_subtitles(subtitles);
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].text, "I am typing this message");
+        assert_eq!(filtered[1].text, "Next subtitle");
+    }
+
+    #[test]
+    fn test_filter_non_prefix_similar_start() {
+        // These start similarly but aren't prefixes
+        let subtitles = vec![
+            create_subtitle("Hello world", 1.0),
+            create_subtitle("Hello there", 2.0),
+            create_subtitle("Helicopter", 3.0),
+        ];
+        
+        let filtered = filter_prefix_subtitles(subtitles);
+        assert_eq!(filtered.len(), 3);
+        assert_eq!(filtered[0].text, "Hello world");
+        assert_eq!(filtered[1].text, "Hello there");
+        assert_eq!(filtered[2].text, "Helicopter");
+    }
 }
