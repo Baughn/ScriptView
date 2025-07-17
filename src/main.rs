@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SubtitleEntry {
@@ -18,10 +19,10 @@ struct SubtitleViewer {
     subtitles: Arc<Mutex<Vec<SubtitleEntry>>>,
     rx: Receiver<notify::Result<notify::Event>>,
     subtitle_file: String,
-    display_count: usize,
     always_on_top: bool,
     file_exists: bool,
     script_installed: bool,
+    script_install_time: Option<Instant>,
 }
 
 impl SubtitleViewer {
@@ -44,10 +45,10 @@ impl SubtitleViewer {
             subtitles: Arc::new(Mutex::new(Vec::new())),
             rx,
             subtitle_file,
-            display_count: 10,
             always_on_top: true,
             file_exists: false,
             script_installed: false,
+            script_install_time: None,
         };
         
         // Load initial content
@@ -106,19 +107,6 @@ impl eframe::App for SubtitleViewer {
                 ui.heading("MPV Subtitle History");
                 ui.separator();
                 
-                // Get subtitles (keep original order for bottom alignment)
-                let display_subs: Vec<_> = {
-                    let subtitles = self.subtitles.lock().unwrap();
-                    let len = subtitles.len();
-                    if len > self.display_count {
-                        subtitles[(len - self.display_count)..]
-                            .iter()
-                            .cloned()
-                            .collect()
-                    } else {
-                        subtitles.iter().cloned().collect()
-                    }
-                };
                 
                 // Show script installation status
                 if !self.script_installed {
@@ -131,16 +119,19 @@ impl eframe::App for SubtitleViewer {
                             match self.install_lua_script() {
                                 Ok(_) => {
                                     self.script_installed = true;
+                                    self.script_install_time = Some(Instant::now());
                                 }
                                 Err(_) => {}
                             }
                         }
                     });
-                } else {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(0, 200, 0),
-                        "✓ Script installed"
-                    );
+                } else if let Some(install_time) = self.script_install_time {
+                    if install_time.elapsed() < Duration::from_secs(5) {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(0, 200, 0),
+                            "✓ Script installed"
+                        );
+                    }
                 }
                 
                 // Show file status warning
@@ -154,6 +145,25 @@ impl eframe::App for SubtitleViewer {
                 
                 // Subtitle area with bottom alignment
                 let remaining_height = ui.available_height() - 50.0; // Reserve space for controls
+                
+                // Calculate how many subtitles fit in available space
+                let subtitle_height = 60.0; // Approximate height per subtitle entry
+                let max_subtitles = ((remaining_height - 40.0) / subtitle_height).floor() as usize;
+                
+                // Get subtitles (keep original order for bottom alignment)
+                let display_subs: Vec<_> = {
+                    let subtitles = self.subtitles.lock().unwrap();
+                    let len = subtitles.len();
+                    let display_count = std::cmp::min(max_subtitles, len);
+                    if len > display_count {
+                        subtitles[(len - display_count)..]
+                            .iter()
+                            .cloned()
+                            .collect()
+                    } else {
+                        subtitles.iter().cloned().collect()
+                    }
+                };
                 
                 if display_subs.is_empty() {
                     ui.allocate_ui_with_layout(
@@ -205,23 +215,6 @@ impl eframe::App for SubtitleViewer {
                 
                 // Controls
                 ui.horizontal(|ui| {
-                    ui.label("Show last:");
-                    if ui.button("-").clicked() && self.display_count > 1 {
-                        self.display_count -= 1;
-                    }
-                    ui.label(format!("{}", self.display_count));
-                    if ui.button("+").clicked() && self.display_count < 50 {
-                        self.display_count += 1;
-                    }
-                    
-                    ui.separator();
-                    
-                    if ui.button("Clear").clicked() {
-                        self.subtitles.lock().unwrap().clear();
-                    }
-                    
-                    ui.separator();
-                    
                     if ui.button(if self.always_on_top { "Always On Top ✓" } else { "Always On Top" }).clicked() {
                         self.always_on_top = !self.always_on_top;
                         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
