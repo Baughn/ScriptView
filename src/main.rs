@@ -104,10 +104,6 @@ impl eframe::App for SubtitleViewer {
         
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical(|ui| {
-                ui.heading("MPV Subtitle History");
-                ui.separator();
-                
-                
                 // Show script installation status
                 if !self.script_installed {
                     ui.horizontal(|ui| {
@@ -143,72 +139,45 @@ impl eframe::App for SubtitleViewer {
                     ui.separator();
                 }
                 
-                // Subtitle area with bottom alignment
-                let remaining_height = ui.available_height() - 50.0; // Reserve space for controls
+                // Subtitle area with automatic scrolling
+                let subtitles = self.subtitles.lock().unwrap();
                 
-                // Calculate how many subtitles fit in available space
-                let subtitle_height = 60.0; // Approximate height per subtitle entry
-                let max_subtitles = ((remaining_height - 40.0) / subtitle_height).floor() as usize;
-                
-                // Get subtitles (keep original order for bottom alignment)
-                let display_subs: Vec<_> = {
-                    let subtitles = self.subtitles.lock().unwrap();
-                    let len = subtitles.len();
-                    let display_count = std::cmp::min(max_subtitles, len);
-                    if len > display_count {
-                        subtitles[(len - display_count)..]
-                            .iter()
-                            .cloned()
-                            .collect()
-                    } else {
-                        subtitles.iter().cloned().collect()
-                    }
-                };
-                
-                if display_subs.is_empty() {
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(ui.available_width(), remaining_height),
-                        egui::Layout::bottom_up(egui::Align::Center),
-                        |ui| {
-                            if self.file_exists {
-                                ui.label("No subtitles yet...");
-                            } else if self.script_installed {
-                                ui.label("Start mpv to see subtitles here.");
-                            } else {
-                                ui.label("Install the script and start mpv to see subtitles.");
-                            }
+                if subtitles.is_empty() {
+                    ui.centered_and_justified(|ui| {
+                        if self.file_exists {
+                            ui.label("No subtitles yet...");
+                        } else if self.script_installed {
+                            ui.label("Start mpv to see subtitles here.");
+                        } else {
+                            ui.label("Install the script and start mpv to see subtitles.");
                         }
-                    );
+                    });
                 } else {
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(ui.available_width(), remaining_height),
-                        egui::Layout::bottom_up(egui::Align::LEFT),
-                        |ui| {
-                            // Reverse order since bottom_up layout displays from bottom
-                            for (i, sub) in display_subs.iter().rev().enumerate() {
-                                ui.group(|ui| {
-                                    ui.horizontal(|ui| {
-                                        // Time stamp
-                                        ui.label(
-                                            egui::RichText::new(format!(
-                                                "[{:.1}s]",
-                                                sub.start_time
-                                            ))
-                                            .small()
-                                            .color(egui::Color32::from_gray(128)),
-                                        );
-                                        
-                                        // Subtitle text
-                                        ui.label(&sub.text);
-                                    });
-                                });
-                                
-                                if i < display_subs.len() - 1 {
-                                    ui.add_space(2.0);
-                                }
+                    egui::ScrollArea::vertical()
+                        .stick_to_bottom(true)
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            for sub in subtitles.iter() {
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(ui.available_width(), 0.0),
+                                    egui::Layout::top_down(egui::Align::LEFT),
+                                    |ui| {
+                                        ui.group(|ui| {
+                                            ui.set_width(ui.available_width());
+                                            ui.horizontal_wrapped(|ui| {
+                                                ui.label(
+                                                    egui::RichText::new(format!("[{:.1}s]", sub.start_time))
+                                                        .small()
+                                                        .color(egui::Color32::from_gray(128)),
+                                                );
+                                                ui.label(egui::RichText::new(&sub.text.replace('\n', " ")).size(14.0));
+                                            });
+                                        });
+                                    }
+                                );
+                                ui.add_space(4.0);
                             }
-                        }
-                    );
+                        });
                 }
                 
                 ui.separator();
