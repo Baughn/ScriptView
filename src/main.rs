@@ -91,7 +91,7 @@ impl SubtitleViewer {
 }
 
 impl eframe::App for SubtitleViewer {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Check for file changes
         while let Ok(event) = self.rx.try_recv() {
             if let Ok(_) = event {
