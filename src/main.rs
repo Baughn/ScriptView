@@ -6,6 +6,8 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+const LUA_SCRIPT: &str = include_str!("../subtitle-monitor.lua");
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SubtitleEntry {
     text: String,
@@ -116,10 +118,9 @@ impl SubtitleViewer {
         // Create directory if it doesn't exist
         std::fs::create_dir_all(&mpv_scripts_dir)?;
         
-        // Copy the script
-        let script_content = std::fs::read_to_string("subtitle-monitor.lua")?;
+        // Write the embedded script
         let target_path = format!("{}/subtitle-monitor.lua", mpv_scripts_dir);
-        std::fs::write(target_path, script_content)?;
+        std::fs::write(target_path, LUA_SCRIPT)?;
         
         Ok(())
     }
